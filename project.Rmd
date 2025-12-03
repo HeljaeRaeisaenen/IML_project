@@ -1,0 +1,98 @@
+---
+title: "Classifying New Particle Formation"
+subtitle: "Group 128, Viktoria Lilitskaia"
+output:
+  pdf_document:
+    latex_engine: xelatex
+date: "2025-12-03"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+```
+
+# Introduction
+
+Special information about the project: we started as a team of three people, but, unfortunately, my two teammates had to leave the course. Initially, we agreed on using Python and its libraries such as numpy, pandas, etc. to do the project, but now I am switching to R, because I am more familiar with it in data science context. However, some preliminary work such as exploratory data analysis was done using Python in Jupyter Notebook, and this is why the Github repository contains both `.Rmd` and `.ipynb` project files. Now, the primary programming language is R and `project.Rmd` is the main project source code file.
+
+# Preprocessing
+
+As a part of preprocessing the data, we need to remove unnecessary columns such as `date`, `id`, and `partlybad`. We also need to encode our class values as numeric values. First, when dealing with binary classification, we can encode *nonevent* as 0 and *any event* as 1. I have not yet decided what method to use in a multiclass setting.
+
+```{r}
+npf <- read.csv("train.csv")
+npf <- subset(npf, select=-c(date, id, partlybad))
+
+vars <- colnames(npf)
+vars <- vars[! vars %in% c('class4')]
+
+y.binary <- ifelse(npf$class4 == "nonevent", 0, 1)
+train.binary <- npf
+train.binary$class4 <- y.binary
+```
+
+## Normalization
+
+We can also normalize our data, because generally normalizing yields more stable results in some classification algorithms such as SVMs or logistic regression. This however can depend on an algorithm, but we can try classification both with and without normalization and compare the results.
+
+```{r}
+train.binary.scaled <- as.data.frame(scale(train.binary[, vars]))
+train.binary.scaled$class4 <- y.binary
+```
+
+# Data Exploration
+
+This task was done using Python and the Seaborn library.
+
+My main task in data exploration was to produce pairplots of variables in the data set to study possible collinearity issues and get more understanding of data overall. However, there is a problem in studying pairplots: we have 100 variables! To deal with this problem, I decided to plot pairplots of 5 variables at a time. Unfortunately, this reduced the number of predictors we can view at the same time, but was useful in the sense of readability. As a result, I produced in total of 20 pairplot images which are saved as `.png` files in the `plots` folder in the Github repository.
+
+I also did a mistake in code once, which produced a pairplot image of 20 variables at the same time. It was unintended, but I saved the image in the `plots` folder anyway, because it gave some broader insight into the variables.
+
+![An example of a pairplot produced by Seaborn. You can find more examples in the "plots" folder.](./plots/pairplot_1.png)
+
+As we see from the generated images, there is a large amount of features that are highly linearly correlated, some of them producing strictly linear plots. We will have to address this issue in the feature selection process.
+
+## Pearson Correlation Coefficient
+
+We can construct a correlation matrix between all variables to further detect correlations.
+
+```{r}
+corr <- cor(npf[, vars])
+thr <- 0.7
+
+corr_df <- which(abs(corr) > thr, arr.ind = TRUE)
+# Remove diagonal and duplicates
+corr_df <- corr_df[corr_df[, 1] < corr_df[, 2], ]
+
+result <- data.frame(
+  var1 = rownames(corr)[corr_df[, 1]],
+  var2 = colnames(corr)[corr_df[, 2]],
+  corr = corr[corr_df]
+)
+
+table(result$var2)
+```
+
+In this table, we see how many times a variable appears in a pair of highly correlated predictors whose Pearson correlation is > 0.7. There are too many correlated pairs to print them all at once, so I decided only to print their counts.
+
+## Feature selection
+
+As we noticed from the pairplots, the data has significant amount of collinear variables. We can use different methods to detect collinearity problems further.
+
+### VIF
+
+We can investigate this further by running collinearity diagnostics such as Variance Inflation Factor (VIF) and dropping predictors that cause collinearity issues. To calculate VIF in R, we can use the library `car`, which has a built-in VIF function.
+
+To assess VIF values, we will train our baseline logistical regression model on the whole scaled dataset and pass the model to the VIF function to calculate the values.
+
+```{r}
+library(car)
+
+vif(glm(class4 ~ ., data = train.binary.scaled, family = binomial))
+```
+
+# Training models
+
+I will try and compare different models.
+
+## Logistic Regression
