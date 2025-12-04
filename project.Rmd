@@ -17,7 +17,9 @@ Special information about the project: we started as a team of three people, but
 
 # Preprocessing
 
-As a part of preprocessing the data, we need to remove unnecessary columns such as `date`, `id`, and `partlybad`. We also need to encode our class values as numeric values. First, when dealing with binary classification, we can encode *nonevent* as 0 and *any event* as 1. I have not yet decided what method to use in a multiclass setting.
+As a part of preprocessing the data, we need to remove unnecessary columns such as `date`, `id`, and `partlybad`. We also need to encode our class values as numeric values. First, when dealing with binary classification, we can encode *nonevent* as 0 and *any event* as 1.
+
+In a multiclass setting, preprocessing of response values can vary depending on the method used. For example, multinomial regression that we use later requires classes to be parsed through a `factor` function to make them categorical. I assume this method to be a default in the most classification methods in R.
 
 ```{r}
 npf <- read.csv("train.csv")
@@ -29,6 +31,9 @@ vars <- vars[! vars %in% c('class4')]
 y.binary <- ifelse(npf$class4 == "nonevent", 0, 1)
 train.binary <- npf
 train.binary$class4 <- y.binary
+
+train.multi <- npf
+train.multi$class4 <- factor(train.multi$class4)
 ```
 
 ## Normalization
@@ -90,9 +95,144 @@ library(car)
 
 vif(glm(class4 ~ ., data = train.binary.scaled, family = binomial))
 ```
+Probably because of convergence issues in standard `glm`, all VIF values in this table are huge. Because of that, I decided to use feature selection method already embedded in model training algorithm later, such as Lasso implemented in `glmnet` library to be used in logistic regression scenario.
 
-# Training models
+# Binary classification
 
-I will try and compare different models.
+In this section, will try and compare different models.
 
 ## Logistic Regression
+
+### Setup
+
+Because standard `glm` has convergence issues on the full dataset as described in the VIF section, I will be using `glmnet` library and experiment with different values of $\alpha$ to see what gives the best accuracy on the validation set. I will be using k-fold cross validation to measure each model's squared loss and mean absolute error to choose the best-performing model. I will choose k=10 and CV implementation by the R library `glmnet`. I will try values of $\alpha$ = 0, 0.5 and 1.
+
+```{r}
+library(glmnet)
+```
+```{r}
+X <- model.matrix(class4 ~ ., data = train.binary)[, -1]
+y <- train.binary$class4
+
+foldid <- sample(1:10, size=length(y), replace=TRUE)
+
+cv1 <- cv.glmnet(X, y, alpha=1, nfolds=10, type.measure = "mse", foldid = foldid)
+cv.5 <- cv.glmnet(X, y, alpha=0.5, nfolds=10, type.measure = "mse", foldid = foldid)
+cv0 <- cv.glmnet(X, y, alpha=0, nfolds=10, type.measure = "mse", foldid = foldid)
+```
+
+We can plot MSE based on values of $\log \lambda$ and choose the best value of $\alpha$.
+
+```{r}
+plot(log(cv1$lambda), cv1$cvm, pch=19, col="red", xlab="log(lambda)", ylab="MSE")
+points(log(cv.5$lambda), cv.5$cvm, pch=19, col="purple")
+points(log(cv0$lambda), cv0$cvm, pch=19, col="blue")
+legend(
+  x = "topleft",
+  legend = c("alpha=1", "alpha=0.5", "alpha=0"),
+  pch = 19,
+  col = c("red", "purple", "blue")
+)
+```
+According to the plot, the absolute lowest MSE is reached by $\alpha=1$. We can also compare the lowest values of MSE by code:
+
+```{r}
+print("Lowest MSE when alpha=1:")
+cv1$cvm[cv1$lambda == cv1$lambda.min]
+print("Lowest MSE when alpha=0.5:")
+cv.5$cvm[cv.5$lambda == cv.5$lambda.min]
+print("Lowest MSE when alpha=0:")
+cv0$cvm[cv0$lambda == cv0$lambda.min]
+```
+
+So, to fit our model, we choose $\alpha=1$ and the lambda that gives the minimum MSE in `cv1`.
+
+### Training
+
+We can estimate the accuracy of our classification by choosing a number of random validation sets and training the model with selected parameters on the rest of the training set. I will run the code to select a random training (50%) and validation (50%) sets and estimate the accuracy.
+
+```{r}
+n <- floor(0.5*nrow(train.binary))
+J <- 30
+acc <- numeric(J)
+
+for (i in 1:J) {
+  picked <- sample(seq_len(nrow(train.binary)), size = n)
+
+  train <- train.binary[picked, ]
+  valid <- train.binary[-picked, ]
+  
+  X.train <- model.matrix(class4 ~ ., data = train)[, -1]
+  y.train <- train$class4
+
+  model <- glmnet(X.train, y.train, family="binomial", alpha=1, lambda=cv1$lambda.min)
+
+  valid.matrix <- model.matrix(class4 ~ ., data=valid)[, -1]
+  valid.pred <- predict(model, newx=valid.matrix, type="response")
+  pred <- ifelse(valid.pred >= 0.5, 1, 0)
+  
+  acc[i] <- mean(pred == valid$class4)
+}
+```
+
+```{r}
+hist(acc, xlab="Accuracy", main="Expected accuracy from binary classification")
+```
+We can expect our accuracy to be between 0.86 - 0.9 on average.
+
+After training the model on the full train data set, we get the following fit:
+
+```{r}
+model.binary <- glmnet(X, y, family="binomial", alpha=1, lambda=cv1$lambda.min)
+```
+```{r}
+print(model.binary)
+```
+Here, Df stands for the number of nonzero coefficients, %dev is the percent deviance explained and Lambda is the value of $\lambda$ used.
+
+# Multiclass classification
+
+## Logistic regression
+
+There are different ways to approach multiclass classification with logistic regression. One can utilize a ready-to-run multinomial algorithm such as multinomial family in the `glmnet` library that can deal with multiple classes. Another possible solution is to train several models using binary logistic regression and make them "fight" against each other either in one-vs-one or one-vs-all settings. First, we will try the easiest option to setup: multinomial glmnet.
+
+### Multinomial glmnet
+
+Additionally to the parameter $\alpha$, the multinomial regression has a parameter $q \in$ {1, 2}. $q=1$ means lasso penalties for each parameter and $q=2$ means a grouped lasso penalty on all the coefficients of a variable. We will try both values and assess which one works better for our data set using `cv.glmnet` as in the binary classification task with K = 10, as well as testing different values of $\alpha \in$ {1, 0.5, 0}.
+
+After running the code for both values of q and all three values of alpha, I've had convergence issues with $\alpha = 1, q = 1$, $\alpha = 1, q = 2$, $\alpha = 0.5, q = 2$. So, I will remove these models from the test and compare the rest which did not have convergence issues.
+
+```{r}
+X <- model.matrix(class4 ~ ., data = train.multi)[, -1]
+y <- train.multi$class4
+
+foldid <- sample(1:10, size=length(y), replace=TRUE)
+
+cv.5q1 <- cv.glmnet(X, y, alpha=0.5, nfolds=10, type.measure = "mse", foldid = foldid, family="multinomial", type.multinomial="ungrouped")
+cv0q1 <- cv.glmnet(X, y, alpha=0, nfolds=10, type.measure = "mse", foldid = foldid, family="multinomial", type.multinomial="ungrouped")
+
+cv0q2 <- cv.glmnet(X, y, alpha=0, nfolds=10, type.measure = "mse", foldid = foldid, family="multinomial", type.multinomial="grouped")
+```
+
+Now, we can plot MSE based on values of $\log \lambda$ and choose the best value of $\alpha$ and $q$.
+
+```{r}
+plot(log(cv.5q1$lambda), cv.5q1$cvm, pch=19, col="red", xlab="log(lambda)", ylab="MSE")
+points(log(cv0q1$lambda), cv0q1$cvm, pch=19, col="purple")
+points(log(cv0q2$lambda), cv0q2$cvm, pch=19, col="blue")
+legend(
+  x = "topleft",
+  legend = c("alpha=0.5, q=1", "alpha=0, q=1", "alpha=0, q=2"),
+  pch = 19,
+  col = c("red", "purple", "blue")
+)
+```
+```{r}
+print("Lowest MSE when alpha=0.5, q=1:")
+cv.5q1$cvm[cv.5q1$lambda == cv.5q1$lambda.min]
+print("Lowest MSE when alpha=0, q=1:")
+cv0q1$cvm[cv0q1$lambda == cv0q1$lambda.min]
+print("Lowest MSE when alpha=0, q=2:")
+cv0q2$cvm[cv0q2$lambda == cv0q2$lambda.min]
+```
+ Based on these criteria, we will choose parameters $\alpha=0.5, q=1$.
