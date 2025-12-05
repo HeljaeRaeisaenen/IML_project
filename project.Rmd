@@ -15,6 +15,19 @@ knitr::opts_chunk$set(echo = FALSE)
 
 Special information about the project: we started as a team of three people, but, unfortunately, my two teammates had to leave the course. Initially, we agreed on using Python and its libraries such as numpy, pandas, etc. to do the project, but now I am switching to R, because I am more familiar with it in data science context. However, some preliminary work such as exploratory data analysis was done using Python in Jupyter Notebook, and this is why the Github repository contains both `.Rmd` and `.ipynb` project files. Now, the primary programming language is R and `project.Rmd` is the main project source code file.
 
+## Custom functions
+
+Under this section, I will define custom functions that I used in this project and provide their code snippets.
+
+### Perplexity
+
+```{r, echo=TRUE}
+perplexity <- function(p, true) {
+  exp(-mean(log(p)))
+}
+```
+
+
 # Preprocessing
 
 As a part of preprocessing the data, we need to remove unnecessary columns such as `date`, `id`, and `partlybad`. We also need to encode our class values as numeric values. First, when dealing with binary classification, we can encode *nonevent* as 0 and *any event* as 1.
@@ -22,8 +35,13 @@ As a part of preprocessing the data, we need to remove unnecessary columns such 
 In a multiclass setting, preprocessing of response values can vary depending on the method used. For example, multinomial regression that we use later requires classes to be parsed through a `factor` function to make them categorical. I assume this method to be a default in the most classification methods in R.
 
 ```{r}
+test <- read.csv("test.csv")
+
 npf <- read.csv("train.csv")
 npf <- subset(npf, select=-c(date, id, partlybad))
+
+test.ids <- test$id
+test <- subset(test, select=-c(date, id, partlybad))
 
 vars <- colnames(npf)
 vars <- vars[! vars %in% c('class4')]
@@ -147,14 +165,15 @@ cv0$cvm[cv0$lambda == cv0$lambda.min]
 
 So, to fit our model, we choose $\alpha=1$ and the lambda that gives the minimum MSE in `cv1`.
 
-### Training
+### Accuracy and perplexity
 
-We can estimate the accuracy of our classification by choosing a number of random validation sets and training the model with selected parameters on the rest of the training set. I will run the code to select a random training (50%) and validation (50%) sets and estimate the accuracy.
+We can estimate the accuracy of our classification by choosing a number of random validation sets and training the model with selected parameters on the rest of the training set. I will run the code to select a random training (50%) and validation (50%) sets and estimate the accuracy as well the perplexity, using our custom defined `perplexity` function.
 
 ```{r}
 n <- floor(0.5*nrow(train.binary))
-J <- 30
-acc <- numeric(J)
+J <- 100
+acc.binary.lr <- numeric(J)
+perp.lr <- numeric(J)
 
 for (i in 1:J) {
   picked <- sample(seq_len(nrow(train.binary)), size = n)
@@ -171,14 +190,19 @@ for (i in 1:J) {
   valid.pred <- predict(model, newx=valid.matrix, type="response")
   pred <- ifelse(valid.pred >= 0.5, 1, 0)
   
-  acc[i] <- mean(pred == valid$class4)
+  acc.binary.lr[i] <- mean(pred == valid$class4)
+  perp.lr[i] <- perplexity(valid.pred)
 }
 ```
 
 ```{r}
-hist(acc, xlab="Accuracy", main="Expected accuracy from binary classification")
+par(mfrow=c(1, 2))
+hist(acc.binary.lr, xlab="Accuracy", main="Accuracy, logistic regression")
+hist(perp.lr, xlab="Perplexity", main="Perplexity. logistic regression")
 ```
-We can expect our accuracy to be between 0.86 - 0.9 on average.
+We can expect our accuracy to be between 0.86 - 0.9 on average, and perplexity around 4 - 8.
+
+### The resulting model
 
 After training the model on the full train data set, we get the following fit:
 
@@ -189,6 +213,14 @@ model.binary <- glmnet(X, y, family="binomial", alpha=1, lambda=cv1$lambda.min)
 print(model.binary)
 ```
 Here, Df stands for the number of nonzero coefficients, %dev is the percent deviance explained and Lambda is the value of $\lambda$ used.
+
+## KNN
+
+poo
+
+## SVM
+
+poo
 
 # Multiclass classification
 
@@ -235,4 +267,95 @@ cv0q1$cvm[cv0q1$lambda == cv0q1$lambda.min]
 print("Lowest MSE when alpha=0, q=2:")
 cv0q2$cvm[cv0q2$lambda == cv0q2$lambda.min]
 ```
- Based on these criteria, we will choose parameters $\alpha=0.5, q=1$.
+Based on these criteria, we will choose parameters $\alpha=0.5, q=1$.
+
+Estimating accuracy:
+
+```{r}
+n <- floor(0.5*nrow(train.multi))
+J <- 30
+acc.multi1 <- numeric(J)
+
+for (i in 1:J) {
+  picked <- sample(seq_len(nrow(train.multi)), size = n)
+
+  train <- train.multi[picked, ]
+  valid <- train.multi[-picked, ]
+  
+  X.train <- model.matrix(class4 ~ ., data = train)[, -1]
+  y.train <- train$class4
+
+  model <- glmnet(X.train, y.train, family="multinomial", alpha=0.5, lambda=cv.5q1$lambda.min, type.multinomial="ungrouped")
+
+  valid.matrix <- model.matrix(class4 ~ ., data=valid)[, -1]
+  valid.pred <- predict(model, newx=valid.matrix, type="class")
+  
+  acc.multi1[i] <- mean(valid.pred == valid$class4)
+}
+```
+
+```{r}
+hist(acc.multi1, xlab="Accuracy", main="Expected accuracy from multinomial classification")
+```
+We can expect our multinomial classification accuracy to be on average between 0.62 and 0.68.
+
+Then, we can fit the model on the full data set:
+
+```{r}
+model.multi <- glmnet(X, y, family="multinomial", alpha=0.5, lambda=cv.5q1$lambda.min, type.multinomial="ungrouped")
+print(model.multi)
+```
+
+### Logistic regression (one-vs-one, one-vs-all)
+
+poo
+
+## KNN
+
+poo
+
+## SVM (one-vs-one, one-vs-all)
+
+poo
+
+# Applying on the test data
+
+```{r}
+b.model <- model.binary
+m.model <- model.multi
+
+test.x <- model.matrix(~ ., data=test)[, -1]
+
+classes <- predict(model.multi, newx = test.x, type = "class")
+ps <- predict(model.binary, newx = test.x, type = "response")
+
+result_df <- data.frame(id=test.ids, class4=classes, p=ps)
+colnames(result_df)[colnames(result_df) == 's0'] <- 'class4'
+colnames(result_df)[colnames(result_df) == 's0.1'] <- 'p'
+
+write.csv(result_df, "submission.csv")
+```
+
+
+# Results
+
+```{r}
+rows <- c("Logistic Regression", "Multinomial Regression")
+
+accs.b <- c(mean(acc.binary.lr), NaN)
+accs.m <- c(NaN, mean(acc.multi1))
+perps <- c(mean(perp.lr), NaN)
+kaggle <- c(0.75559, 0.75559)
+
+table.df <- data.frame(
+  Model = rows,
+  'Bin.accuracy' = accs.b,
+  'Mult.accuracy' = accs.m,
+  Perplexity = perps,
+  'Kaggle.score' = kaggle,
+  stringsAsFactors = FALSE
+)
+
+knitr::kable(table.df)
+```
+
