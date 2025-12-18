@@ -21,7 +21,7 @@ Special information about the project: we started as a team of three people, but
 
 ## Custom functions
 
-Under this section, I will define custom functions that I used in this project and provide their code snippets.
+Under this section, we will define custom functions that are used in this project and provide their code snippets.
 
 ### Perplexity
 
@@ -57,7 +57,7 @@ alpha.lambda <- function(data.x, y) {
 
 ### Binary logistic accuracy and perplexity estimation
 
-This function is used to assess the accuracy and perplexity of a logistic classification method in a binary setting.
+This function is used to assess the accuracy and perplexity of a logistic classification method in a binary setting by using random train and validation subsets of the data J times (we chose J=100 in all cases) and collecting the resulting perplexity and accuracy scores into one vector.
 
 ```{r, echo=TRUE}
 logistic.acc.perp <- function(data, J, y, lambda) {
@@ -150,9 +150,9 @@ npf.scaled <- as.data.frame(scale(npf[, vars]))
 
 This task was done using Python and the Seaborn library.
 
-My main task in data exploration was to produce pairplots of variables in the data set to study possible collinearity issues and get more understanding of data overall. However, there is a problem in studying pairplots: we have 100 variables! To deal with this problem, I decided to plot pairplots of 5 variables at a time. Unfortunately, this reduced the number of predictors we can view at the same time, but was useful in the sense of readability. As a result, I produced in total of 20 pairplot images which are saved as `.png` files in the `plots` folder in the Github repository.
+Our main task in data exploration was to produce pairplots of variables in the data set to study possible collinearity issues and get more understanding of data overall. However, there is a problem in studying pairplots: we have 100 variables! To deal with this problem, we decided to plot pairplots of 5 variables at a time. Unfortunately, this reduced the number of predictors we can view at the same time, but was useful in the sense of readability. As a result, we produced in total of 20 pairplot images which are saved as `.png` files in the `plots` folder in the Github repository.
 
-I also did a mistake in code once, which produced a pairplot image of 20 variables at the same time. It was unintended, but I saved the image in the `plots` folder anyway, because it gave some broader insight into the variables.
+We also made a mistake in code once, which produced a pairplot image of 20 variables at the same time. It was unintended, but we saved the image in the `plots` folder anyway, because it gave some broader insight into the variables.
 
 ![An example of a pairplot produced by Seaborn. You can find more examples in the "plots" folder.](./plots/pairplot_1.png)
 
@@ -203,17 +203,11 @@ library(glmnet)
 X <- model.matrix(~ ., data = npf.scaled)[, -1]
 y <- y.binary
 
-X.u <- model.matrix(~ ., data = npf[, vars])[, -1]
-
 foldid <- sample(1:10, size=length(y), replace=TRUE)
 
 cv1 <- cv.glmnet(X, y, alpha=1, nfolds=10, type.measure = "mse", foldid = foldid)
 cv.5 <- cv.glmnet(X, y, alpha=0.5, nfolds=10, type.measure = "mse", foldid = foldid)
 cv0 <- cv.glmnet(X, y, alpha=0, nfolds=10, type.measure = "mse", foldid = foldid)
-
-cv1.u <- cv.glmnet(X.u, y, alpha=1, nfolds=10, type.measure = "mse", foldid = foldid)
-cv.5.u <- cv.glmnet(X.u, y, alpha=0.5, nfolds=10, type.measure = "mse", foldid = foldid)
-cv0.u <- cv.glmnet(X.u, y, alpha=0, nfolds=10, type.measure = "mse", foldid = foldid)
 ```
 
 We can plot MSE based on values of $\log \lambda$ and choose the best value of $\alpha$.
@@ -245,29 +239,39 @@ So, to fit our model, we choose $\alpha=1$ and the lambda that gives the minimum
 
 ## Accuracy and perplexity
 
-We can estimate the accuracy of our classification by choosing a number of random validation sets and training the model with selected parameters on the rest of the training set. I will run the code to select a random training (50%) and validation (50%) sets and estimate the accuracy as well the perplexity, using our custom defined `perplexity` function.
+We can estimate the accuracy of our classification by choosing a number of random validation sets and training the model with selected parameters on the rest of the training set. I will run the code to select a random training (50%) and validation (50%) sets and estimate the accuracy as well the perplexity, using our custom defined `perplexity` function. By the end of it, we get the following distribution of accuracy and perplexity scores:
 
 ```{r}
 accperp.s <- logistic.acc.perp(npf.scaled, 100, y.binary, cv1$lambda.min)
 acc.s <- accperp.s[[1]]
 perp.s <- accperp.s[[2]]
 
-accperp.u <- logistic.acc.perp(npf, 100, y.binary, cv1.u$lambda.min)
+accperp.u <- logistic.acc.perp(npf, 100, y.binary, cv1$lambda.min)
 acc.u <- accperp.u[[1]]
 perp.u <- accperp.u[[2]]
 ```
 
 ```{r}
-hist1.s <- hist(acc.s, plot=FALSE)
+acc_all <- c(acc.s, acc.u)
+breaks_acc <- seq(
+  from = min(acc_all),
+  to   = max(acc_all),
+  length.out = 20
+)
+
+hist1.s <- hist(acc.s, breaks = breaks_acc, plot=FALSE)
 hist2.s <- hist(perp.s, plot=FALSE)
 
-hist1.u <- hist(acc.u, plot=FALSE)
+hist1.u <- hist(acc.u, breaks = breaks_acc, plot=FALSE)
 hist2.u <- hist(perp.u, plot=FALSE)
+
+ylim_acc <- range(hist1.s$counts, hist1.u$counts)
+ylim_perp <- range(hist2.s$counts, hist2.u$counts)
 
 par(mfrow=c(1, 2))
 
-plot(hist1.s, col = rgb(1,0,0,0.4), xlab="Accuracy", main="Accuracy", ylim = c(0, 40))
-plot(hist1.u, xaxt='n', yaxt = 'n', col = rgb(0,0,1,0.4), add=TRUE)
+plot(hist1.s, col = rgb(1,0,0,0.4), xlab="Accuracy", main="Accuracy", ylim = ylim_acc)
+plot(hist1.u, col = rgb(0,0,1,0.4), xaxt='n', yaxt = 'n', add=TRUE)
 
 legend(
   x = "topright",
@@ -276,7 +280,7 @@ legend(
   lwd = 2
 )
 
-plot(hist2.s, col = rgb(1,0,0,0.4), xlab="Perplexity", main="Perplexity", ylim = c(0, 40))
+plot(hist2.s, col = rgb(1,0,0,0.4), xlab="Perplexity", main="Perplexity", ylim = ylim_perp)
 plot(hist2.u, xaxt='n', yaxt = 'n', col = rgb(0,0,1,0.4), add=TRUE)
 
 legend(
@@ -297,27 +301,27 @@ mean(acc.u)
 sd(acc.u)
 ```
 
-Based on the mean and standard deviation values and histogram comparison, we do not notice any considerable differences between scaling or not scaling the data.
+Based on the mean and standard deviation values and histogram comparison, we notice that scaling the data produces slightly smoother distribution of accuracies, while unscaled data seems to be more susceptible to random fluctuations. Nonetheless, average accuracy looks similar between both data sets.
 
 # Multiclass classification
 
-There are different ways to approach multiclass classification. One can utilize a ready-to-run multinomial algorithm such as multinomial family in the `glmnet` library that can deal with multiple classes. We will test this option first, because it is the easiest to setup.
+There are different ways to approach multiclass classification. One can utilize a ready-to-run multinomial algorithm such as multinomial family in the `glmnet` library that can deal with multiple classes. We will test this option first, because it is the most simple to setup.
 
 ## Multinomial regression
 
-Additionally to the parameter $\alpha$, the multinomial regression has a parameter $q \in$ {1, 2}. $q=1$ means lasso penalties for each parameter and $q=2$ means a grouped lasso penalty on all the coefficients of a variable. We will try both values and assess which one works better for our data set using `cv.glmnet` as in the binary classification task with K = 10, as well as testing different values of $\alpha \in$ {1, 0.5, 0}. We will use the scaled data set.
+Additionally to the parameter $\alpha$, the multinomial regression has a parameter $q \in$ {1, 2}. $q=1$ means lasso penalties for each parameter and $q=2$ means a grouped lasso penalty on all the coefficients of a variable. We will try both values and assess which one works better for our data set using `cv.glmnet` as in the binary classification task with *K = 10*, as well as testing different values of $\alpha \in$ {1, 0.5, 0}. We will use the scaled and unscaled data sets and compare the performance on both of them.
 
 After running the code for both values of q and all three values of alpha, I've had convergence issues with $\alpha = 1, q = 1$, $\alpha = 1, q = 2$, $\alpha = 0.5, q = 2$. So, we will remove these models from the test and compare the rest which did not have convergence issues.
 
 ```{r}
 X <- model.matrix(~ ., data = npf.scaled)[, -1]
+X.u <- model.matrix(~ ., data = npf[, vars])[, -1]
 y <- y.multi
 
 foldid <- sample(1:10, size=length(y), replace=TRUE)
 
 cv.5q1 <- cv.glmnet(X, y, alpha=0.5, nfolds=10, type.measure = "mse", foldid = foldid, family="multinomial", type.multinomial="ungrouped")
 cv0q1 <- cv.glmnet(X, y, alpha=0, nfolds=10, type.measure = "mse", foldid = foldid, family="multinomial", type.multinomial="ungrouped")
-
 cv0q2 <- cv.glmnet(X, y, alpha=0, nfolds=10, type.measure = "mse", foldid = foldid, family="multinomial", type.multinomial="grouped")
 ```
 
@@ -346,11 +350,11 @@ cv0q2$cvm[cv0q2$lambda == cv0q2$lambda.min]
 
 Based on these criteria, we will choose parameters $\alpha=0.5, q=1$.
 
-Estimating accuracy:
+Next, we can see the resulting accuracy distribution for scaled and unscaled data:
 
 ```{r}
 n <- floor(0.5*nrow(npf.scaled))
-J <- 30
+J <- 100
 acc.multi1 <- numeric(J)
 
 for (i in 1:J) {
@@ -373,27 +377,74 @@ for (i in 1:J) {
 ```
 
 ```{r}
-hist(acc.multi1, xlab="Accuracy", main="Expected accuracy from multinomial classification")
+acc.multi1.u <- numeric(J)
+
+for (i in 1:J) {
+  picked <- sample(seq_len(nrow(npf)), size = n)
+
+  train <- npf[picked, vars]
+  valid <- npf[-picked, vars]
+  y.valid <- y.multi[-picked]
+  
+  X.train <- model.matrix(~ ., data = train)[, -1]
+  y.train <- y.multi[picked]
+
+  model <- glmnet(X.train, y.train, family="multinomial", alpha=0.5, lambda=cv.5q1$lambda.min, type.multinomial="ungrouped")
+
+  valid.matrix <- model.matrix(~ ., data=valid)[, -1]
+  valid.pred <- predict(model, newx=valid.matrix, type="class")
+  
+  acc.multi1.u[i] <- mean(valid.pred == y.valid)
+}
 ```
-
-We can expect our multinomial classification accuracy to be on average between 0.62 and 0.68.
-
-Then, we can fit the model on the full data set:
 
 ```{r}
-model.multi <- glmnet(X, y, family="multinomial", alpha=0.5, lambda=cv.5q1$lambda.min, type.multinomial="ungrouped")
-print(model.multi)
+acc_all2 <- c(acc.multi1, acc.multi1.u)
+breaks_acc <- seq(
+  from = min(acc_all2),
+  to   = max(acc_all2),
+  length.out = 20
+)
+
+hist2.s <- hist(acc.multi1, plot=FALSE, breaks=acc_all2)
+hist2.u <- hist(acc.multi1.u, plot=FALSE, breaks=acc_all2)
+
+ylim_acc2 <- range(hist2.s$counts, hist2.u$counts)
+
+plot(hist2.s, col = rgb(1,0,0,0.4), xlab="Accuracy", main="Expected accuracy from multinomial classification", ylim = ylim_acc2, xlim = c(0.56, 0.74))
+plot(hist2.u, xaxt='n', yaxt = 'n', col = rgb(0,0,1,0.4), add=TRUE)
+
+legend(
+  x = "topright",
+  legend = c("Scaled", "Unscaled"),
+  col = c("red", "blue"),
+  lwd = 2
+)
 ```
+Mean and standard deviation values of accuracies between scaled and unscaled data:
+
+```{r}
+print("Mean accuracy and std for scaled data:")
+mean(acc.multi1)
+sd(acc.multi1)
+print("Mean accuracy and std for unscaled data:")
+mean(acc.multi1.u)
+sd(acc.multi1.u)
+```
+
+We can expect our multinomial classification accuracy to be on average between 0.62 and 0.68. Distributions of accuracies are also pretty similar between scaled and unscaled data; scaled data has a very slight advantage by being more centered near the average accuracies, while unscaled data generate wider range of accuracies especially at the lower end.
 
 ## Logistic regression
 
 Another possible solution is to train several models using binary logistic regression and make them "fight" against each other either in one-vs-one or one-vs-all settings.
 
-We can setup our logistic regression to give predictions in a multiclass setting. We can use either "one-vs-all" or "one-vs-one" strategy. For this problem, we chose "one-vs-all", because it requires less amount of models to train, making it more simple option. We will test this approach on scaled and unscaled data.
+We can setup our logistic regression to give predictions in a multiclass setting. We can use either "one-vs-all" or "one-vs-one" strategy. For this problem, we chose "one-vs-all", because it requires less amount of models to train (four models instead of six), and also does not require to split the training data into chunks of only two classes. We will test this approach on scaled and unscaled data.
 
 In this strategy, we will train four separate logistic regression models using `glmnet`: *nonevent vs. rest*, *Ia vs. rest*, *Ib vs. rest*, *II vs. rest*. We will use the same strategy as in binary classification problem to choose the appropriate value of $\alpha$ for each model. After that, we will run our test data set through all four models and assign class with the largest probability.
 
-### Nonevent vs. rest
+### Parameter selection: scaled data
+
+**Nonevent vs. rest**
 
 This one is similar to the binary classification of nonevent vs. event, but in this case our model will give the probability of *nonevent* instead of probability of *event*.
 
@@ -405,7 +456,7 @@ lambda1 <- al1[[2]]
 print(paste0("Nonevent vs. rest: alpha=", alpha1, " lambda=", lambda1))
 ```
 
-### Ia vs. rest
+**Ia vs. rest**
 
 ```{r}
 y.m.ia.rest <- ifelse(npf$class4 == "Ia", 1, 0)
@@ -415,7 +466,7 @@ lambda2 <- al2[[2]]
 print(paste0("Ia vs. rest: alpha=", alpha2, " lambda=", lambda2))
 ```
 
-### Ib vs. rest
+**Ib vs. rest**
 
 ```{r}
 y.m.ib.rest <- ifelse(npf$class4 == "Ib", 1, 0)
@@ -425,7 +476,7 @@ lambda3 <- al3[[2]]
 print(paste0("Ib vs. rest: alpha=", alpha3, " lambda=", lambda3))
 ```
 
-### II vs. rest
+**II vs. rest**
 
 ```{r}
 y.m.ii.rest <- ifelse(npf$class4 == "II", 1, 0)
@@ -435,8 +486,6 @@ lambda4 <- al4[[2]]
 print(paste0("II vs. rest: alpha=", alpha4, " lambda=", lambda4))
 ```
 
-### Accuracy estimation
-
 ```{r}
 alphas <- c(alpha1, alpha2, alpha3, alpha4)
 lambdas <- c(lambda1, lambda2, lambda3, lambda4)
@@ -445,8 +494,8 @@ classes <- c("nonevent", "Ia", "Ib", "II")
 
 ```{r}
 n <- floor(0.5*nrow(npf.scaled))
-J <- 70
-acc.multi2 <- numeric(J)
+J <- 100
+acc.multi2.s <- numeric(J)
 
 for (i in 1:J) {
   picked <- sample(seq_len(nrow(npf.scaled)), size = n)
@@ -464,17 +513,11 @@ for (i in 1:J) {
 
   res <- logistic.multiclass(train, y, valid, alphas, lambdas, classes)
   
-  acc.multi2[i] <- mean(y.valid == res$predicted)
+  acc.multi2.s[i] <- mean(y.valid == res$predicted)
 }
 ```
 
-```{r}
-hist(acc.multi2, xlab="Accuracy", main="Expected accuracy from one-vs-all logistic regression (scaled)")
-```
-
-Expected accuracy is comparable to multinomial regression. Next, we will try follow the same steps with unscaled data.
-
-Accuracy estimation (unscaled)
+### Parameter selection: unscaled data
 
 ```{r}
 al1 <- alpha.lambda(npf[, vars], y.m.non.rest)
@@ -483,7 +526,7 @@ lambda1 <- al1[[2]]
 print(paste0("Nonevent vs. rest: alpha=", alpha1, " lambda=", lambda1))
 ```
 
--   *Ia vs. rest*
+**Ia vs. rest**
 
 ```{r}
 al2 <- alpha.lambda(npf[, vars], y.m.ia.rest)
@@ -492,7 +535,7 @@ lambda2 <- al2[[2]]
 print(paste0("Ia vs. rest: alpha=", alpha2, " lambda=", lambda2))
 ```
 
--   *Ib vs. rest*
+**Ib vs. rest**
 
 ```{r}
 al3 <- alpha.lambda(npf[, vars], y.m.ib.rest)
@@ -501,7 +544,7 @@ lambda3 <- al3[[2]]
 print(paste0("Ib vs. rest: alpha=", alpha3, " lambda=", lambda3))
 ```
 
--   *II vs. rest*
+**II vs. rest**
 
 ```{r}
 al4 <- alpha.lambda(npf[, vars], y.m.ii.rest)
@@ -510,7 +553,9 @@ lambda4 <- al4[[2]]
 print(paste0("II vs. rest: alpha=", alpha4, " lambda=", lambda4))
 ```
 
-*Accuracy estimation*
+### Accuracy estimation
+
+Next, we will perform similar comparison as in the previous chapters, and plot the distributions of accuracies between scaled and unscaled data:
 
 ```{r}
 alphas2 <- c(alpha1, alpha2, alpha3, alpha4)
@@ -518,9 +563,7 @@ lambdas2 <- c(lambda1, lambda2, lambda3, lambda4)
 ```
 
 ```{r}
-n <- floor(0.5*nrow(npf))
-J <- 70
-acc.multi3 <- numeric(J)
+acc.multi2.u <- numeric(J)
 
 for (i in 1:J) {
   picked <- sample(seq_len(nrow(npf)), size = n)
@@ -538,25 +581,48 @@ for (i in 1:J) {
 
   res <- logistic.multiclass(train, y, valid, alphas2, lambdas2, classes)
   
-  acc.multi3[i] <- mean(y.valid == res$predicted)
+  acc.multi2.u[i] <- mean(y.valid == res$predicted)
 }
 ```
 
 ```{r}
-hist(acc.multi3, xlab="Accuracy", main="Expected accuracy from one-vs-all logistic regression (unscaled)")
+hist3.s <- hist(acc.multi2.s, plot=FALSE)
+hist3.u <- hist(acc.multi2.u, plot=FALSE)
+
+ylim_acc3 <- range(hist3.s$counts, hist3.u$counts)
+
+plot(hist3.s, col = rgb(1,0,0,0.4), xlab="Accuracy", main="Expected accuracy from logistic one-vs-all", ylim = ylim_acc3, xlim = c(0.56, 0.74))
+plot(hist3.u, xaxt='n', yaxt = 'n', col = rgb(0,0,1,0.4), add=TRUE)
+
+legend(
+  x = "topright",
+  legend = c("Scaled", "Unscaled"),
+  col = c("red", "blue"),
+  lwd = 2
+)
+```
+Mean and standard deviation values of accuracies between scaled and unscaled data:
+
+```{r}
+print("Mean accuracy and std for scaled data:")
+mean(acc.multi2.s)
+sd(acc.multi2.s)
+print("Mean accuracy and std for unscaled data:")
+mean(acc.multi2.u)
+sd(acc.multi2.u)
 ```
 
-We notice that on average, this one-vs-all classifier performs better on unscaled data.
+Based on the histograms and mean accuracies, we see how the scaled data tend to produce better accuracy than the unscaled. The difference is more clear in logistic one-vs-all setting compared to multinomial regression.
 
 # Results
 
 ```{r}
-rows <- c("Scaled Logistic Regression (LR)", "Scaled LR (one-vs-all)", "Unscaled LR (one-vs-all)", "Multinomial Regression")
+rows <- c("Scaled LR", "Unscaled LR", "Scaled LR (one-vs-all)", "Unscaled LR (one-vs-all)", "Scaled Multinomial", "Unscaled Multinomial")
 
-accs.b <- c(mean(acc.binary.lr), NA, NA, NA)
-accs.m <- c(NA, mean(acc.multi2), mean(acc.multi3), mean(acc.multi1))
-perps <- c(mean(perp.lr), NA, NA, NA)
-kaggle <- c(0.74645, NA, 0.76250, 0.75559)
+accs.b <- c(mean(acc.s), mean(acc.u), NA, NA, NA, NA)
+accs.m <- c(NA, NA, mean(acc.multi2.s), mean(acc.multi2.u), mean(acc.multi1), mean(acc.multi1.u))
+perps <- c(mean(perp.s), mean(perp.u), NA, NA, NA, NA)
+kaggle <- c(0.74878, 0.74705, NA, 0.74360, 0.74878, 0.74705)
 
 table.df <- data.frame(
   Model = rows,
@@ -570,4 +636,13 @@ table.df <- data.frame(
 knitr::kable(table.df)
 ```
 
-After trying both scaled and unscaled data on Logistic Regression and Multinomial Regression, I notices with surprise that unscaled data produced better results on average. My first two submissions I used unscaled data on both binary and multiclass classification, which gave much better Kaggle score than the third submission with scaled data. Also, the average perplexity was estimated lower in unscaled data cases than in scaled. In case of unscaled data for multiclass problem, one-vs-all Logistic Regression did better then Multinomial. With scaled data, however, Multinomial Regression managed to get slightly more accuracy on average.
+After trying both scaled and unscaled data on Logistic Regression and Multinomial Regression, we noticed that its effect on classification accuracy differs between classification method. It is generally expected that logistic regression gives better predictions with scaled data, but in the case of binary logistic regression and multinomial regression, the difference was not noticeable. However, in these cases scaling the data lead to generally smoother distribution of accuracy, which can especially be seen in histograms of binary LR accuracies. 
+The resulting differences are more considerable in case of multiclass logistic in one-vs-all setup, where average accuracy was noticeable higher with scaled data. As such, we can conclude that in this particular problem, it is preferable to scale the data, because it introduces no disadvantages and in some cases makes predictions slightly more accurate and stable.
+
+Other than that, we notice that the quality of predictions does not differ significantly between different settings of logistic and multinomial regressions. We decided to focus on optimizing these models, because logistic regression is a good baseline classification method, and we were interested to see if this method could be optimized to give results comparable to more complex models. We consider this experiment to be a success; despite only using simple models, we managed to get pretty good private score for Kaggle that guaranteed us 11th place in the competition.
+
+Another thing that could possibly have been done is to also try other classification machine learning methods such as KNN, SVM or Random Forest, and compare the results with those from our baseline logistic solution, but alas, we ran out of time.
+
+# Self-grading report
+
+If I was to suggest a grade for my term project, I would give myself a grade of 3. I think I managed to produce a clear and suitable report which goes into detail of what I have done in this project and why certain choices were made. The report could have been more polished, however, and I could have done more work in comparing my model of choice with models of other families. I believe that my work shows some understanding, although the depth of it is not for me to decide, since I would not possibly notice the limits of my knowledge by myself. I think the reason of my choice of the classification method might be a little weak; Firstly, I chose logistic regression just to try something baseline to analyze the data because of the method's simplicity, but later I decided to stick with it and instead try to optimize the baseline methods as much as I could. I also feel like there was no problem in following the schedule; I was not late for any submissions, although I did not manage to implement all the classification methods I wanted to try, but this might be a problem just with planning too much initially. I also believe that my deliverables follow the instructions given: they include reasoning for my choices, there is no unexplained code dumps, visualizations are mostly clear, etc.
